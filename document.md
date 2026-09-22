@@ -106,10 +106,39 @@ LXC_DHCP_MAX="253"                        # ip最多数量(不改也可)
 
 rambo@debian137:~$ sudo systemctl restart lxc-net
 
-
 ```
 
 
+
+# 关于安全
+
+```shell
+# 强制开启"非特权容器(Unprivileged Containers)"
+在全局默认配置或创建参数中强制写入 UID/GID 映射，确保所有新创建的容器均为非特权容器
+rambo@debian137:~$ sudo vim /etc/lxc/default.conf          # 增加lxc.idmap的两项
+lxc.idmap = u 0 100000 65536
+lxc.idmap = g 0 100000 65536
+lxc.net.0.type = veth
+lxc.net.0.linkname = lxcbr0
+lxc.net.0.flags = up
+
+
+# 网络防火墙策略：防止租户间内网横向攻击
+文件路径：/etc/nftables.conf 或你的宿主机初始化脚本
+在宿主机上通过 nftables（Debian 13 默认网络过滤框架）隔离各个 veth 接口，禁止容器内互相访问内网，只允许访问网关和外网：
+rambo@debian137:~$ sudo vim /etc/nftables.conf
+....
+	....
+table inet lxc_isolation {
+    chain forward {
+        type filter hook forward priority 0; policy accept;
+        # 阻止不同 lxc 容器网段之间的直接通信
+        iifname "lxcbr0" oifname "lxcbr0" drop
+    }
+}
+
+
+```
 
 
 
