@@ -46,17 +46,33 @@ def init_db():
         tenant_id INTEGER NOT NULL,
         root_pass TEXT NOT NULL DEFAULT '123456',
         os_type TEXT NOT NULL DEFAULT 'Linux',
-        ssh_port INTEGER
+        ssh_port INTEGER,
+        cpu_limit TEXT DEFAULT '1核',
+        mem_limit TEXT DEFAULT '512MB',
+        disk_limit TEXT DEFAULT '5GB'
     )
     ''')
-    try:
-        cursor.execute("ALTER TABLE container_records ADD COLUMN os_type TEXT NOT NULL DEFAULT 'Linux'")
-    except Exception:
-        pass
-    try:
-        cursor.execute("ALTER TABLE container_records ADD COLUMN ssh_port INTEGER")
-    except Exception:
-        pass
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        client_ip TEXT NOT NULL,
+        action_desc TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    for col, default_val in [
+        ("os_type", "Linux"), 
+        ("ssh_port", "NULL"), 
+        ("cpu_limit", "1核"), 
+        ("mem_limit", "512MB"), 
+        ("disk_limit", "5GB")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE container_records ADD COLUMN {col} { 'INTEGER' if col=='ssh_port' else 'TEXT' } DEFAULT '{default_val}'")
+        except Exception:
+            pass
 
     default_users = [
         ('admin', 'AdminPass123', 'admin', 1),
@@ -74,6 +90,20 @@ def init_db():
     conn.close()
 
 init_db()
+
+def write_audit_log(username, action_desc):
+    try:
+        client_ip = request.remote_addr or "127.0.0.1"
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO audit_logs (username, client_ip, action_desc) VALUES (?, ?, ?)",
+            (username, client_ip, action_desc)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 def get_next_available_tenant_id():
     conn = sqlite3.connect(DB_FILE)
@@ -148,13 +178,22 @@ def run_incus(args, check=True, timeout=10):
 def get_db_container_records():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT container_name, owner, tenant_id, root_pass, os_type, ssh_port FROM container_records")
+    cursor.execute("SELECT container_name, owner, tenant_id, root_pass, os_type, ssh_port, cpu_limit, mem_limit, disk_limit FROM container_records")
     rows = cursor.fetchall()
     conn.close()
     res = {}
     for r in rows:
         port = r[5] if r[5] else (2302 + r[0].__hash__() % 100)
-        res[r[0]] = {"owner": r[1], "tenant_id": r[2], "root_pass": r[3], "os_type": r[4], "ssh_port": port}
+        res[r[0]] = {
+            "owner": r[1], 
+            "tenant_id": r[2], 
+            "root_pass": r[3], 
+            "os_type": r[4], 
+            "ssh_port": port,
+            "cpu_limit": r[6] if r[6] else "1核",
+            "mem_limit": r[7] if r[7] else "512MB",
+            "disk_limit": r[8] if r[8] else "5GB"
+        }
     return res
 
 def get_user_incus_containers(current_user):
@@ -217,7 +256,10 @@ def get_user_incus_containers(current_user):
             "ssh_user": ssh_user,
             "host_ip": host_ip,
             "owner": owner,
-            "status": status
+            "status": status,
+            "cpu_limit": info["cpu_limit"],
+            "mem_limit": info["mem_limit"],
+            "disk_limit": info["disk_limit"]
         })
         
     return containers_list
@@ -465,8 +507,8 @@ function closeReinstallModal() {
 </div>
 {% endif %}
 <div>
-<label>容器名称 (TENANT_NAME):</label>
-<input type="text" name="tenant_name" placeholder="例如: my-node-01" required>
+<label>容器名称 (TENANT_NAME): <small style="color:#666;">(3-16位字母数字下划线/中划线)</small></label>
+<input type="text" name="tenant_name" placeholder="例如: mynode01" pattern="^[a-zA-Z0-9_-]{3,16}$" title="必须是3-16位的字母、数字、下划线或减号" required>
 </div>
 <div>
 <label>系统镜像 (OS_TYPE):</label>
@@ -483,12 +525,31 @@ function closeReinstallModal() {
 <input type="number" id="tenant_id_input" name="tenant_id" value="{{ current_tenant_id }}" readonly required>
 </div>
 <div>
+<label>CPU 核心限制:</label>
+<select name="cpu_limit">
+<option value="0.5核">0.5 核</option>
+<option value="1核" selected>1 核</option>
+<option value="2核">2 核</option>
+<option value="4核">4 核</option>
+</select>
+</div>
+<div>
 <label>内存限制 (MEM_LIMIT):</label>
-<input type="text" name="mem_limit" value="512MB" required>
+<select name="mem_limit">
+<option value="512MB" selected>512 MB</option>
+<option value="1024MB">1024 MB (1GB)</option>
+<option value="2048MB">2048 MB (2GB)</option>
+<option value="4096MB">4096 MB (4GB)</option>
+</select>
 </div>
 <div>
 <label>磁盘限制 (DISK_LIMIT):</label>
-<input type="text" name="disk_limit" value="5GB" required>
+<select name="disk_limit">
+<option value="5GB" selected>5 GB</option>
+<option value="10GB">10 GB</option>
+<option value="20GB">20 GB</option>
+<option value="50GB">50 GB</option>
+</select>
 </div>
 <div class="full-width">
 <button type="submit" style="padding: 10px 15px; font-size: 16px;">立即创建容器</button>
@@ -515,6 +576,7 @@ function closeReinstallModal() {
 <th>SSH 端口</th>
 <th>Root 密码</th>
 <th>SSH 连接命令</th>
+<th>资源配额 (CPU/MEM/Disk)</th>
 <th style="text-align: center; width: 90px;">高级操作</th>
 </tr>
 </thead>
@@ -539,6 +601,7 @@ function closeReinstallModal() {
 <td>{{ c.ssh_port }}</td>
 <td><span class="pass-tag">{{ c.root_pass }}</span></td>
 <td><code>ssh {{ c.ssh_user }}@{{ c.host_ip }} -p {{ c.ssh_port }}</code></td>
+<td><small><b>{{ c.cpu_limit }}</b> / <b>{{ c.mem_limit }}</b> / <b>{{ c.disk_limit }}</b></small></td>
 <td style="text-align: center;">
   <div class="dropdown">
     <button type="button" class="dropbtn">管理 ⚙️</button>
@@ -549,16 +612,19 @@ function closeReinstallModal() {
       <a href="/container/single_action?name={{ c.tenant_name }}&act=start">▶️ 启动容器</a>
       {% endif %}
       <a href="/container/single_action?name={{ c.tenant_name }}&act=restart">🔄 重启容器</a>
+      <a href="/container/terminal?name={{ c.tenant_name }}" target="_blank">🖥️ Web 终端</a>
+      <a href="/container/reset_pwd?name={{ c.tenant_name }}" onclick="return confirm('确定要重置该容器的 Root 密码吗？')">🔑 重置密码</a>
       <a href="javascript:void(0);" onclick="openReinstallModal('{{ c.tenant_name }}')">⚡ 重装系统</a>
       <a href="javascript:void(0);" onclick="openMountModal('{{ c.tenant_name }}')">📁 挂载目录</a>
       <a href="/container/single_action?name={{ c.tenant_name }}&act=unmount">❌ 取消挂载</a>
+      <a href="/container/single_action?name={{ c.tenant_name }}&act=destroy" style="color: red; font-weight: bold;" onclick="return confirm('警告：彻底销毁后数据将无法找回！确定操作吗？')">🗑️ 彻底销毁</a>
     </div>
   </div>
 </td>
 </tr>
 {% else %}
 <tr>
-<td colspan="11" style="text-align: center; color: #888;">暂无容器记录，请展开上方【➕ 创建新容器】创建。</td>
+<td colspan="12" style="text-align: center; color: #888;">暂无容器记录，请展开上方【➕ 创建新容器】创建。</td>
 </tr>
 {% endfor %}
 </tbody>
@@ -627,6 +693,7 @@ def login():
         user = get_db_user(username)
         if user and user['password'] == password:
             session['user'] = username
+            write_audit_log(username, "登录后台系统成功")
             return redirect(url_for('index'))
         else:
             flash("用户名或密码错误！")
@@ -635,6 +702,8 @@ def login():
 
 @app.route('/logout')
 def logout():
+    if 'user' in session:
+        write_audit_log(session['user'], "退出登录")
     session.pop('user', None)
     return redirect(url_for('login'))
 
@@ -671,6 +740,7 @@ def add_user():
             )
             conn.commit()
             conn.close()
+            write_audit_log(session['user'], f"添加新租户: {new_username}")
             flash(f"🎉 成功添加新租户 [{new_username}]（密码: {new_password}，租户 ID: {auto_tid}）！数据已持久化。")
         except sqlite3.IntegrityError:
             flash(f"❌ 添加失败：用户名 [{new_username}] 已存在！")
@@ -680,18 +750,35 @@ def add_user():
 @login_required
 def create_container():
     tenant_name = request.form.get('tenant_name', '').strip()
+    
+    if not re.match(r'^[a-zA-Z0-9_-]{3,16}$', tenant_name):
+        flash("❌ 错误：容器名称必须是 3-16 位的字母、数字、下划线或减号！")
+        return redirect(url_for('index'))
+
     os_type = request.form.get('os_type', '').strip()
     tenant_id = request.form.get('tenant_id', '').strip()
-    mem_limit = request.form.get('mem_limit', '').strip()
-    disk_limit = request.form.get('disk_limit', '').strip()
+    mem_limit = request.form.get('mem_limit', '512MB').strip()
+    disk_limit = request.form.get('disk_limit', '5GB').strip()
+    cpu_limit = request.form.get('cpu_limit', '1核').strip()
     assign_owner = request.form.get('assign_owner', '').strip()
     
     if session['user'] == 'admin' and assign_owner:
         target_owner = assign_owner
     else:
         target_owner = session['user']
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    if session['user'] != 'admin':
+        cursor.execute("SELECT COUNT(*) FROM container_records WHERE owner = ?", (target_owner,))
+        count = cursor.fetchone()[0]
+        if count >= 3:
+            conn.close()
+            flash("❌ 您的账号最多只能创建 3 个容器，已达配额上限！")
+            return redirect(url_for('index'))
+    conn.close()
         
-    if not all([tenant_name, os_type, tenant_id, mem_limit, disk_limit]):
+    if not all([tenant_name, os_type, tenant_id, mem_limit, disk_limit, cpu_limit]):
         flash("❌ 错误：所有表单字段均不能为空！")
         return redirect(url_for('index'))
     
@@ -708,7 +795,6 @@ def create_container():
         process = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         output = process.stdout + process.stderr
         
-        # 兼容处理：即使脚本返回码非 0（例如主键冲突但容器已实际在系统中存在），只要能检查到容器存在或存活则允许正常注册
         container_exists_in_incus = False
         check_running = run_incus(["info", tenant_name], check=False)
         if check_running and check_running.returncode == 0:
@@ -729,7 +815,6 @@ def create_container():
             if pass_match:
                 parsed_root_pass = pass_match.group(1)
             else:
-                print(f"DEBUG OUTPUT: {output}")
                 parsed_root_pass = "123456"
 
             run_incus(["config", "set", tenant_name, f"user.owner={target_owner}"], check=False)
@@ -751,12 +836,13 @@ def create_container():
                 ], check=False)
             
             cursor.execute(
-                "REPLACE INTO container_records (container_name, owner, tenant_id, root_pass, os_type, ssh_port) VALUES (?, ?, ?, ?, ?, ?)",
-                (tenant_name, target_owner, int(tenant_id), parsed_root_pass, os_type, assigned_port)
+                "REPLACE INTO container_records (container_name, owner, tenant_id, root_pass, os_type, ssh_port, cpu_limit, mem_limit, disk_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (tenant_name, target_owner, int(tenant_id), parsed_root_pass, os_type, assigned_port, cpu_limit, mem_limit, disk_limit)
             )
             conn.commit()
             conn.close()
             time.sleep(0.5)
+            write_audit_log(session['user'], f"成功创建容器: {tenant_name} (归属: {target_owner}, 规格: {cpu_limit}/{mem_limit}/{disk_limit})")
             flash(f"🎉 容器 {tenant_name} 注册成功，所有者: [{target_owner}]，端口: {assigned_port}！")
     except Exception as e:
         flash(f"❌ 系统异常: {str(e)}")
@@ -805,8 +891,9 @@ def container_action():
         except Exception:
             fail_count += 1
             
-    action_text_map = {'restart': '智能重启/启动', 'stop': '停止', 'delete': '删除'}
+    action_text_map = {'restart': '智能重启/启动', 'stop': '停止', 'delete': '批量删除'}
     act_str = action_text_map.get(action, '操作')
+    write_audit_log(session['user'], f"执行批量{act_str}: 操作对象 {selected}")
     flash(f"批量[{act_str}]完成: 成功 {success_count} 个，失败 {fail_count} 个。")
     return redirect(url_for('index'))
 
@@ -855,9 +942,99 @@ def single_action():
                 flash(f"✅ 已清除容器 [{c_name}] 的自定义挂载点！")
             else:
                 flash(f"❌ 取消挂载失败或本身无自定义挂载设备")
+        elif act == 'destroy':
+            res = run_incus(["delete", "--force", c_name], check=False, timeout=30)
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM container_records WHERE container_name = ?", (c_name,))
+            conn.commit()
+            conn.close()
+            write_audit_log(session['user'], f"彻底销毁容器: {c_name}")
+            flash(f"🗑️ 容器 [{c_name}] 已被彻底销毁！")
+            return redirect(url_for('index'))
+            
+        write_audit_log(session['user'], f"单容器操作 [{act}]: {c_name}")
     except Exception as e:
         flash(f"❌ 操作异常: {str(e)}")
 
+    return redirect(url_for('index'))
+
+@app.route('/container/terminal')
+@login_required
+def container_terminal():
+    c_name = request.args.get('name')
+    db_records = get_db_container_records()
+    if c_name in db_records and session['user'] != 'admin' and db_records[c_name]['owner'] != session['user']:
+        flash("❌ 无权访问此容器终端！")
+        return redirect(url_for('index'))
+    
+    write_audit_log(session['user'], f"通过 Web 终端连入容器: {c_name}")
+    bin_path = get_incus_bin()
+    
+    # 动态启动一个针对该容器的 ttyd 进程，端口随机分配或通过子进程托管
+    # 这里采用 xterm.js 网页嵌入 ttyd 的前端 iframe / 静态全屏页面方案
+    # 或者直接重定向/动态分配端口执行 ttyd 
+    # 为保证最轻量、不卡死，采用直接拉起 ttyd 绑定独立临时端口或者输出完整 Web 终端页面
+    import socket
+    def find_free_port():
+        s = socket.socket()
+        s.bind(('', 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
+    ttyd_port = find_free_port()
+    # 后台启动 ttyd 托管该容器的 incus shell
+    subprocess.Popen(
+        ["ttyd", "-p", str(ttyd_port), "-W", "sudo", bin_path, "shell", c_name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    
+    host_ip = get_host_ip()
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+    <meta charset="UTF-8">
+    <title>容器 [{c_name}] Web 终端</title>
+    <style>
+    body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; background: #1e1e1e; overflow: hidden; }}
+    iframe {{ width: 100%; height: 100%; border: none; }}
+    .top-bar {{ position: absolute; top: 5px; right: 15px; z-index: 999; }}
+    .btn-back {{ background: #dc3545; color: white; padding: 5px 12px; text-decoration: none; border-radius: 4px; font-family: sans-serif; font-size: 12px; }}
+    </style>
+    </head>
+    <body>
+    <div class="top-bar">
+        <a href="/" class="btn-back">关闭并返回控制台</a>
+    </div>
+    <iframe src="http://{host_ip}:{ttyd_port}"></iframe>
+    </body>
+    </html>
+    """
+
+@app.route('/container/reset_pwd')
+@login_required
+def container_reset_pwd():
+    c_name = request.args.get('name')
+    db_records = get_db_container_records()
+    if c_name in db_records and session['user'] != 'admin' and db_records[c_name]['owner'] != session['user']:
+        flash("❌ 无权操作此容器！")
+        return redirect(url_for('index'))
+    
+    new_pass = "P" + os.urandom(4).hex() + "8!"
+    run_incus(["exec", c_name, "--", "sh", "-c", f"echo 'root:{new_pass}' | chpasswd"], check=False)
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE container_records SET root_pass = ? WHERE container_name = ?", (new_pass, c_name))
+    conn.commit()
+    conn.close()
+    
+    write_audit_log(session['user'], f"重置容器 Root 密码: {c_name}")
+    flash(f"🔑 容器 [{c_name}] 的 Root 密码已重置成功为: {new_pass}")
     return redirect(url_for('index'))
 
 @app.route('/container/mount', methods=['POST'])
@@ -879,6 +1056,7 @@ def mount_directory():
         ], check=False, timeout=15)
         
         if res and res.returncode == 0:
+            write_audit_log(session['user'], f"挂载目录到容器 {c_name}: Host({host_path}) -> Container({container_path})")
             flash(f"🎉 成功将宿主机路径 [{host_path}] 挂载到容器 [{c_name}] 的 [{container_path}]！")
         else:
             flash(f"❌ 挂载失败: {res.stderr if res else '未知错误'}")
@@ -904,7 +1082,7 @@ def reinstall_container():
     
     try:
         run_incus(["delete", "--force", c_name], check=False, timeout=30)
-        cmd = ["create_lxd.sh", c_name, os_type, tenant_id, "512MB", "5GB"]
+        cmd = ["create_lxd.sh", c_name, os_type, tenant_id, rec['mem_limit'], rec['disk_limit']]
         process = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         
         output = process.stdout + process.stderr
@@ -913,12 +1091,8 @@ def reinstall_container():
         if user_match:
             ssh_user = user_match.group(1)
             
-        pass_match = re.search(r"(?:Root\s*密码|登录密码)\s*:\s*([^\s]+)", output, re.IGNORECASE)
-        if pass_match:
-            parsed_root_pass = pass_match.group(1)
-        else:
-            print(f"DEBUG OUTPUT: {output}")
-            parsed_root_pass = "123456"
+        pass_match = re.search(r"(?:Root\s*密码|登录密码)\s*:[^\s]+", output, re.IGNORECASE)
+        parsed_root_pass = pass_match.group(1) if pass_match else "123456"
 
         run_incus(["start", c_name], check=False, timeout=30)
         run_incus(["config", "set", c_name, f"user.owner={rec['owner']}"], check=False)
@@ -934,12 +1108,13 @@ def reinstall_container():
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute(
-            "REPLACE INTO container_records (container_name, owner, tenant_id, root_pass, os_type, ssh_port) VALUES (?, ?, ?, ?, ?, ?)",
-            (c_name, rec['owner'], int(tenant_id), parsed_root_pass, os_type, old_port)
+            "REPLACE INTO container_records (container_name, owner, tenant_id, root_pass, os_type, ssh_port, cpu_limit, mem_limit, disk_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (c_name, rec['owner'], int(tenant_id), parsed_root_pass, os_type, old_port, rec['cpu_limit'], rec['mem_limit'], rec['disk_limit'])
         )
         conn.commit()
         conn.close()
 
+        write_audit_log(session['user'], f"重装容器系统: {c_name} -> {os_type}")
         flash(f"⚡ 容器 [{c_name}] 系统已成功重装为 [{os_type}]！")
     except Exception as e:
         flash(f"❌ 系统重装失败: {str(e)}")
