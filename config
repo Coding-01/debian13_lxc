@@ -1,0 +1,30 @@
+# Template used to create this container: /usr/share/lxc/templates/lxc-download
+# Parameters passed to the template: --dist debian --release trixie --arch amd64
+# For additional config options, please look at lxc.container.conf(5)
+# Uncomment the following line to support nesting containers:
+#lxc.include = /usr/share/lxc/config/nesting.conf
+# (Be aware this has security implications)
+# Distribution configuration
+lxc.include = /usr/share/lxc/config/common.conf
+lxc.arch = linux64
+# Container specific configuration
+lxc.apparmor.profile = generated
+lxc.apparmor.allow_nesting = 1
+# Network configuration
+lxc.net.0.type = veth
+lxc.net.0.link = lxcbr0
+lxc.net.0.flags = up
+lxc.start.auto = 1 
+lxc.start.delay = 5
+lxc.mount.entry = /srv/lxc/debian01-data  mnt/data none bind,create=dir 0 0
+# 限制网络出入带宽
+lxc.net.0.type = veth
+lxc.net.0.link = lxcbr0
+lxc.net.0.flags = up
+#lxc.net.0.script.up = /etc/lxc/limit_bandwidth.sh       # 当容器网络启动时，自动调用限速脚本
+lxc.hook.start-host = /etc/lxc/limit_bandwidth.sh
+# 限制CPU与内存
+lxc.cgroup2.memory.max = 1G
+lxc.cgroup2.cpu.max = 100000 200000
+lxc.rootfs.path = dir:/var/lib/lxc/debian01/rootfs
+lxc.uts.name = debian01
