@@ -1,5 +1,9 @@
 # 前奏
 ```shell
+注："第一版" 和 "第二版" 这2个目录以外的文件是共用的！！！
+
+
+
 rambo@debian137:~$ cat /etc/debian_version
 13.7
 rambo@debian137:~$ uname -a
