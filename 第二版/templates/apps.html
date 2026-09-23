@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>容器应用商店</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">容器管理控制台</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link active" href="/container/apps">应用商店</a>
+                <a class="nav-link" href="/">返回主页</a>
+                <a class="nav-link text-danger" href="/logout">退出登录</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-info alert-dismissible fade show" role="alert" style="white-space: pre-line;">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2>📦 容器应用商店</h2>
+                <p class="text-muted mb-0">在此页面可浏览所有可选应用，并为您的指定容器一键部署服务。</p>
+            </div>
+            {% if session['user'] == 'admin' %}
+            <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#publishAppCollapse" aria-expanded="false" aria-controls="publishAppCollapse">
+                ➕ 管理员上架新应用
+            </button>
+            {% endif %}
+        </div>
+
+        <!-- 管理员上架/修改应用折叠表单 -->
+        {% if session['user'] == 'admin' %}
+        <div class="collapse mb-4" id="publishAppCollapse">
+            <div class="card card-body shadow-sm border-primary">
+                <h4 class="text-primary mb-3" id="form-title">🛠️ 上架新应用到应用商店</h4>
+                <form action="/container/apps" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="form_action" value="publish_app">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">应用唯一标识 (Key)：</label>
+                            <input type="text" id="input-key" name="key_name" class="form-control" placeholder="例如: redis_server (修改时输入相同Key)" required>
+                            <div class="form-text">只能由英文、数字、下划线组成。输入已存在的Key将直接覆盖修改。</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">应用名称 (Title)：</label>
+                            <input type="text" id="input-title" name="title" class="form-control" placeholder="例如: Redis 缓存数据库" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">应用描述 (Description)：</label>
+                        <input type="text" id="input-desc" name="desc" class="form-control" placeholder="例如: 一键部署高性能 Redis 缓存服务" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">上传本地脚本文件 (可选)：</label>
+                        <input type="file" id="script-file-input" class="form-control" accept=".sh,.txt">
+                        <div class="form-text">选择本地写好的脚本文件，可自动将其内容填充到下方的脚本框中。</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">安装部署 Shell 脚本 (Script)：</label>
+                        <textarea id="input-script" name="script" class="form-control font-monospace" rows="6" placeholder="apt update && apt install -y redis-server..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success">确认并保存应用</button>
+                    <button type="button" class="btn btn-secondary ms-2" onclick="resetAppForm()">取消/清空表单</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 应用列表展示 -->
+        <div class="row row-cols-1 row-cols-md-2 g-4">
+            {% for key, app in app_scripts.items() %}
+            <div class="col">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body d-flex flex-column">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h4 class="card-title text-primary mb-0">{{ app.title }}</h4>
+                            <!-- 管理员专属的修改/删除快捷按钮（使用 |tojson 安全转义，彻底杜绝UI错位） -->
+                            {% if session['user'] == 'admin' %}
+                            <div>
+                                <button class="btn btn-outline-warning btn-sm" onclick='editApp({{ key|tojson }}, {{ app.title|tojson }}, {{ app.desc|tojson }}, {{ app.script|tojson }})'>修改</button>
+                                <form action="/container/apps" method="POST" class="d-inline" onsubmit="return confirm('确定要删除应用 {{ app.title }} 吗？');">
+                                    <input type="hidden" name="form_action" value="delete_app">
+                                    <input type="hidden" name="target_key" value="{{ key }}">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">删除</button>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <p class="card-text text-secondary flex-grow-1">{{ app.desc }}</p>
+                        
+                        <form action="/container/apps" method="POST" class="mt-3">
+                            <input type="hidden" name="app_action" value="{{ key }}">
+                            
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">选择目标容器：</label>
+                                <select name="target_container" class="form-select" required>
+                                    <option value="" disabled selected>-- 请选择您名下的容器 --</option>
+                                    {% for c in containers %}
+                                    <option value="{{ c.tenant_name }}">{{ c.tenant_name }} (系统: {{ c.os_type }} | 状态: {{ c.status }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <button type="submit" class="container-fluid btn btn-success">一键部署此应用</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 本地脚本文件上传并自动读取填充到文本框
+        document.getElementById('script-file-input')?.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                document.getElementById('input-script').value = evt.target.result;
+            };
+            reader.readAsText(file);
+        });
+
+        // 快捷将应用数据填充进上架/修改表单
+        function editApp(key, title, desc, script) {
+            document.getElementById('form-title').innerText = "✏️ 修改应用: " + title;
+            document.getElementById('input-key').value = key;
+            document.getElementById('input-key').readOnly = true; // Key不可修改
+            document.getElementById('input-title').value = title;
+            document.getElementById('input-desc').value = desc;
+            document.getElementById('input-script').value = script;
+
+            // 自动展开上架表单折叠面板
+            const collapseElement = document.getElementById('publishAppCollapse');
+            const bsCollapse = new bootstrap.Collapse(collapseElement, {toggle: true});
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        function resetAppForm() {
+            document.getElementById('form-title').innerText = "🛠️ 上架新应用到应用商店";
+            document.getElementById('input-key').value = "";
+            document.getElementById('input-key').readOnly = false;
+            document.getElementById('input-title').value = "";
+            document.getElementById('input-desc').value = "";
+            document.getElementById('input-script').value = "";
+            document.getElementById('script-file-input').value = "";
+        }
+    </script>
+</body>
+</html>

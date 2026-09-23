@@ -1,5 +1,5 @@
+前奏
 
-# 前奏
 ```shell
 rambo@debian137:~$ cat /etc/debian_version
 13.7
@@ -2211,9 +2211,8 @@ cat: /mnt/data/a.txt: No such file or directory
 
 
 
-
-
 # FAQ
+
 ```shell
 # 强力删除残留实例
 incus delete alpine326 --force

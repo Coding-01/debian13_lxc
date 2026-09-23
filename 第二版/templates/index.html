@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>容器自动化创建平台</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 30px; background-color: #f4f6f9; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.container { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+.create-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 650px; margin-top: 15px; }
+label { font-weight: bold; margin-bottom: 5px; display: block; }
+input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; height: 38px; }
+input[readonly] { background-color: #e9ecef; cursor: not-allowed; color: #495057; font-weight: bold; }
+.full-width { grid-column: span 2; }
+button { background-color: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+button:hover { background-color: #0056b3; }
+.add-user-grid { display: grid; grid-template-columns: 1fr 1.2fr 110px 110px; gap: 15px; align-items: end; max-width: 780px; margin-top: 15px; }
+.btn-gen { background-color: #17a2b8; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 13px; height: 38px; width: 100%; white-space: nowrap; }
+.btn-add { background-color: #28a745; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 14px; height: 38px; width: 100%; font-weight: bold; white-space: nowrap; }
+.btn-logout { background-color: #dc3545; padding: 6px 12px; font-size: 14px; text-decoration: none; color: white; border-radius: 4px; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+table, th, td { border: 1px solid #ddd; }
+th, td { padding: 10px; text-align: left; }
+th { background-color: #f8f9fa; }
+.flash { padding: 10px; background-color: #d4edda; color: #155724; border-radius: 4px; margin-bottom: 15px; }
+.badge-admin { background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+.badge-user { background: #007bff; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+.pass-tag { background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 4px; font-family: monospace; font-weight: bold; }
+details summary { cursor: pointer; outline: none; font-weight: bold; font-size: 16px; user-select: none; }
+details summary:hover { color: #0056b3; }
+.action-bar { margin-top: 15px; display: flex; gap: 10px; align-items: center; }
+.btn-restart { background-color: #ffc107; color: #212529; font-weight: bold; }
+.btn-stop { background-color: #fd7e14; color: white; font-weight: bold; }
+.btn-delete { background-color: #dc3545; color: white; font-weight: bold; }
+.status-running { color: #28a745; font-weight: bold; }
+.status-stopped { color: #6c757d; font-weight: bold; }
+
+.dropdown { position: relative; display: inline-block; }
+.dropbtn { background-color: #6c757d; color: white; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.dropdown-content { display: none; position: absolute; right: 0; background-color: #ffffff; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 100; border-radius: 4px; overflow: hidden; }
+.dropdown-content a { color: black; padding: 8px 12px; text-decoration: none; display: block; text-align: left; width: 100%; background: none; border: none; font-size: 13px; box-sizing: border-box; cursor: pointer; }
+.dropdown-content a:hover { background-color: #f1f1f1; }
+.dropdown:hover .dropdown-content { display: block; }
+
+.modal { display: none; position: fixed; z-index: 200; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+.modal-content { background-color: #fff; margin: 10% auto; padding: 20px; border-radius: 8px; width: 450px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+.close-btn { color: #aaa; float: right; font-size: 24px; font-weight: bold; cursor: pointer; }
+.close-btn:hover { color: #000; }
+</style>
+<script>
+function generatePassword() {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let pass = "";
+    for (let i = 0; i < 12; i++) { pass += chars.charAt(Math.floor(Math.random() * chars.length)); }
+    document.getElementById("new_password").value = pass;
+}
+function updateTenantIdByOwner(selectObj) {
+    const selectedOption = selectObj.options[selectObj.selectedIndex];
+    const tenantId = selectedOption.getAttribute('data-tenant-id');
+    const tenantInput = document.getElementById('tenant_id_input');
+    if (tenantInput && tenantId) { tenantInput.value = tenantId; }
+}
+function toggleSelectAll(source) {
+    checkboxes = document.getElementsByName('selected_containers');
+    for(var i=0, n=checkboxes.length; i<n; i++) { checkboxes[i].checked = source.checked; }
+}
+function confirmContainerAction(actionName) {
+    const checkboxes = document.querySelectorAll('input[name="selected_containers"]:checked');
+    if (checkboxes.length === 0) { alert("请先勾选需要操作的容器!"); return false; }
+    if (actionName === 'delete') { return confirm("警告: 确定要物理删除选中的 " + checkboxes.length + " 个容器吗?"); }
+    return confirm("确定要对选中的 " + checkboxes.length + " 个容器执行 [" + actionName + "] 操作吗?");
+}
+function openMountModal(cName) { document.getElementById('mount_cname').value = cName; document.getElementById('mountModal').style.display = 'block'; }
+function closeMountModal() { document.getElementById('mountModal').style.display = 'none'; }
+function openReinstallModal(cName) { document.getElementById('reinstall_cname').value = cName; document.getElementById('reinstallModal').style.display = 'block'; }
+function closeReinstallModal() { document.getElementById('reinstallModal').style.display = 'none'; }
+</script>
+</head>
+<body>
+<div class="header">
+<h2>容器控制台</h2>
+<div>
+当前用户: <b>{{ session['user'] }}</b>
+{% if session['user'] == 'admin' %}<span class="badge-admin">超级管理员</span>{% else %}<span class="badge-user">租户账号</span>{% endif %}
+| <a href="/logout" class="btn-logout">退出登录</a>
+</div>
+</div>
+{% with messages = get_flashed_messages() %}
+{% if messages %}{% for message in messages %}<div class="flash">{{ message }}</div>{% endfor %}{% endif %}
+{% endwith %}
+
+{% if session['user'] == 'admin' %}
+<div class="container" style="border-left: 4px solid #dc3545; background-color: #fff;">
+<details>
+<summary style="color: #dc3545;">管理员工具: 在线添加新租户 (点击展开/隐藏)</summary>
+<form action="/add_user" method="post" class="add-user-grid">
+<div><label>新租户用户名:</label><input type="text" name="new_username" required></div>
+<div><label>新租户密码:</label><input type="text" id="new_password" name="new_password" required></div>
+<div><button type="button" class="btn-gen" onclick="generatePassword()">生成密码</button></div>
+<div><button type="submit" class="btn-add">添加账号</button></div>
+</form>
+</details>
+</div>
+
+<div class="container" style="border-left: 4px solid #17a2b8; background-color: #fff;">
+<details>
+<summary style="color: #17a2b8;">租户账号及登录密码汇总列表 (点击展开/隐藏)</summary>
+<div style="margin-top: 15px;">
+<table>
+<thead><tr><th>ID</th><th>用户名</th><th>系统密码</th><th>角色</th><th>租户ID</th></tr></thead>
+<tbody>
+{% for u in all_users_info %}
+<tr><td>{{ u.id }}</td><td><b>{{ u.username }}</b></td><td><span class="pass-tag">{{ u.password }}</span></td><td>{{ u.role }}</td><td><b>{{ u.tenant_id }}</b></td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</details>
+</div>
+{% endif %}
+
+<div class="container" style="border-left: 4px solid #007bff;">
+<details>
+<summary style="color: #007bff;">➕ 创建新容器</summary>
+<form action="/create" method="post" class="create-form">
+{% if session['user'] == 'admin' %}
+<div class="full-width" style="background: #fff3cd; padding: 12px; border-radius: 4px;">
+<label style="color: #856404;">👑 容器归属账号:</label>
+<select name="assign_owner" onchange="updateTenantIdByOwner(this)">
+{% for u in all_users_info %}
+<option value="{{ u.username }}" data-tenant-id="{{ u.tenant_id }}" {% if u.username == session['user'] %}selected{% endif %}>{{ u.username }} (ID: {{ u.tenant_id }})</option>
+{% endfor %}
+</select>
+</div>
+{% endif %}
+<div><label>容器名称 (3-16位):</label><input type="text" name="tenant_name" pattern="^[a-zA-Z0-9_-]{3,16}$" required></div>
+<div><label>系统镜像:</label><select name="os_type"><option value="ub24">Ubuntu 24.04</option><option value="alpine">Alpine 3.24</option><option value="debian13">Debian 13</option><option value="centos9">CentOS Stream 9</option><option value="rocky9">Rocky Linux 9</option></select></div>
+<div><label>租户 ID:</label><input type="number" id="tenant_id_input" name="tenant_id" value="{{ current_tenant_id }}" readonly required></div>
+<div><label>CPU 限制:</label><select name="cpu_limit"><option value="0.5核">0.5核</option><option value="1核" selected>1核</option><option value="2核">2核</option></select></div>
+<div><label>内存限制:</label><select name="mem_limit"><option value="512MB" selected>512MB</option><option value="1024MB">1024MB</option><option value="2048MB">2048MB</option></select></div>
+<div><label>磁盘限制:</label><select name="disk_limit"><option value="5GB" selected>5GB</option><option value="10GB">10GB</option></select></div>
+<div class="full-width"><button type="submit">立即创建容器</button></div>
+</form>
+</details>
+</div>
+
+<div class="container">
+<h3 style="margin-top: 0;">已创建容器列表</h3>
+<form action="/containers/action" method="post">
+<table>
+<thead>
+<tr>
+<th style="width: 40px; text-align: center;"><input type="checkbox" onclick="toggleSelectAll(this)"></th>
+<th>容器名称</th><th>状态</th><th>所有者</th><th>系统</th><th>租户ID</th><th>IP 地址</th><th>SSH 端口</th><th>Root 密码</th><th>连接命令</th><th>配置 (CPU/MEM/Disk)</th><th style="text-align: center;">高级操作</th>
+</tr>
+</thead>
+<tbody>
+{% for c in containers %}
+<tr>
+<td style="text-align: center;"><input type="checkbox" name="selected_containers" value="{{ c.tenant_name }}"></td>
+<td><b>{{ c.tenant_name }}</b></td>
+<td>{% if c.status == '运行中' %}<span class="status-running">{{ c.status }}</span>{% else %}<span class="status-stopped">{{ c.status }}</span>{% endif %}</td>
+<td>{{ c.owner }}</td><td>{{ c.os_type }}</td><td>{{ c.tenant_id }}</td>
+<td><span style="color: green;">{{ c.container_ip }}</span></td>
+<td>{{ c.ssh_port }}</td>
+<td><span class="pass-tag">{{ c.root_pass }}</span></td>
+<td><code>ssh {{ c.ssh_user }}@{{ c.host_ip }} -p {{ c.ssh_port }}</code></td>
+<td><small>{{ c.cpu_limit }} / {{ c.mem_limit }} / {{ c.disk_limit }}</small></td>
+<td style="text-align: center;">
+  <div class="dropdown">
+    <button type="button" class="dropbtn">管理 ⚙️</button>
+    <div class="dropdown-content">
+      {% if c.status == '运行中' %}<a href="/container/single_action?name={{ c.tenant_name }}&act=stop">⏹️ 停止容器</a>{% else %}<a href="/container/single_action?name={{ c.tenant_name }}&act=start">▶️ 启动容器</a>{% endif %}
+      <a href="/container/single_action?name={{ c.tenant_name }}&act=restart">🔄 重启</a>
+      <a href="/container/terminal?name={{ c.tenant_name }}" target="_blank">🖥️ Web 终端</a>
+      <a href="/container/apps?name={{ c.tenant_name }}">📦 应用商店 / WP</a>
+      <a href="/container/reset_pwd?name={{ c.tenant_name }}">🔑 重置密码</a>
+      <a href="javascript:void(0);" onclick="openReinstallModal('{{ c.tenant_name }}')">⚡ 重装</a>
+      <a href="javascript:void(0);" onclick="openMountModal('{{ c.tenant_name }}')">📁 挂载</a>
+      <a href="/container/single_action?name={{ c.tenant_name }}&act=destroy" style="color: red;" onclick="return confirm('确定销毁?')">🗑️ 销毁</a>
+    </div>
+  </div>
+</td>
+</tr>
+{% else %}
+<tr><td colspan="12" style="text-align: center; color: #888;">暂无容器记录</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% if containers %}
+<div class="action-bar">
+<button type="submit" name="action" value="restart" class="btn-restart" onclick="return confirmContainerAction('重启')">🔄 智能重启</button>
+<button type="submit" name="action" value="stop" class="btn-stop" onclick="return confirmContainerAction('停止')">⏹️ 批量停止</button>
+<button type="submit" name="action" value="delete" class="btn-delete" onclick="return confirmContainerAction('delete')">🗑️ 批量删除</button>
+</div>
+{% endif %}
+</form>
+</div>
+
+<!-- 弹窗模态框 -->
+<div id="mountModal" class="modal"><div class="modal-content"><span class="close-btn" onclick="closeMountModal()">&times;</span><h3>📁 挂载目录</h3><form action="/container/mount" method="post"><input type="hidden" id="mount_cname" name="container_name"><div style="margin-bottom:12px;"><label>宿主机路径:</label><input type="text" name="host_path" required></div><div style="margin-bottom:12px;"><label>容器内路径:</label><input type="text" name="container_path" required></div><button type="submit">确认挂载</button></form></div></div>
+<div id="reinstallModal" class="modal"><div class="modal-content"><span class="close-btn" onclick="closeReinstallModal()">&times;</span><h3 style="color:#dc3545;">⚡ 重装系统</h3><form action="/container/reinstall" method="post"><input type="hidden" id="reinstall_cname" name="container_name"><div style="margin-bottom:12px;"><label>系统:</label><select name="os_type"><option value="ub24">Ubuntu 24.04</option><option value="debian13">Debian 13</option></select></div><button type="submit" style="background-color:#dc3545;">确认重装</button></form></div></div>
+</body>
+</html>
