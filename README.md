@@ -226,6 +226,11 @@ Link:           vethK2dNMg
 ```shell
 整体架构采用 Flask (后端) + Single File HTML/Bootstrap5 (前端)，占用内存仅约 20MB。它通过受限的 sudo 权限调用你写好的 /etc/lxc/destroy_and_rebuild.sh 脚本，实现了身份鉴权、状态监控、电源控制、密码重置以及带二次确认的系统重置功能
 
+# 安装ttyd
+rambo@debian137:~$ sudo wget -O /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64
+sudo chmod +x /usr/local/bin/ttyd
+ttyd --version
+
 
 一、 宿主机权限与环境准备
 为了确保 Web 后端（用低权限用户运行）能够安全执行系统级别的 LXC 管理命令，且不泄露宿主机的 root 完整权限，我们需要配置精准的 sudoers 提权规则。

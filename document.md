@@ -1,5 +1,3 @@
-[toc]
-
 
 # 前奏
 ```shell
@@ -1056,8 +1054,14 @@ Link:           vethK2dNMg
 一、 宿主机权限与环境准备
 为了确保 Web 后端（用低权限用户运行）能够安全执行系统级别的 LXC 管理命令，且不泄露宿主机的 root 完整权限，我们需要配置精准的 sudoers 提权规则。
 
-1. 创建专用低权限运行用户
-在宿主机运行：
+# 安装ttyd
+rambo@debian137:~$ 
+sudo wget -O /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64
+sudo chmod +x /usr/local/bin/ttyd
+ttyd --version
+
+
+1. 在宿主机上创建专用低权限运行用户
 rambo@debian137:~$ sudo useradd -m -s /bin/bash lxcweb
 
 2. 配置 /etc/sudoers.d/lxcweb 提权规则
