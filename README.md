@@ -1,7 +1,7 @@
 # 前奏
 ```shell
 注："第一版" 和 "第二版" 这2个目录以外的文件是共用的！！！
-
+README中的内容是基于"第一版"，和"第二版"的区别是app.py拆分成了多个文件且增加了几个文件
 
 
 rambo@debian137:~$ cat /etc/debian_version
