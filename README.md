@@ -315,3 +315,234 @@ lisi用户账密：lisi/Lisi123456
 ![](./第一版/images/client.png)
 
 ![](./第一版/images/web_terminal.png)
+
+
+
+# 其他
+
+## 对容器做快照
+
+```shell
+# 创建快照
+例如给 alpine111 创建一个名为 alpine111-snap 的快照：
+rambo@debian137:~$ sudo incus snapshot create alpine111  alpine111-snap
+给三个容器都创建快照：
+rambo@debian137:~$ 
+sudo incus snapshot create alpine111 alpine111-snap
+sudo incus snapshot create rocky222  rocky222-snap
+sudo incus snapshot create ubretg  ubretg-snap
+
+查看某个容器的快照：
+rambo@debian137:~$ sudo incus snapshot list alpine111
++----------------+----------------------+------------+----------+
+|      NAME      |       TAKEN AT       | EXPIRES AT | STATEFUL |
++----------------+----------------------+------------+----------+
+| alpine111-snap | 2026/09/24 18:58 HKT |            | NO       |
++----------------+----------------------+------------+----------+
+
+
+# 查看快照
+rambo@debian137:~$ sudo incus snapshot list alpine111
++----------------+----------------------+------------+----------+
+|      NAME      |       TAKEN AT       | EXPIRES AT | STATEFUL |
++----------------+----------------------+------------+----------+
+| alpine111-snap | 2026/09/24 18:58 HKT |            | NO       |
++----------------+----------------------+------------+----------+
+
+# 或者
+rambo@debian137:~$ sudo incus list      # SNAPSHOTS会是1
++-----------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+|   NAME    |  STATE  |         IPV4          |                      IPV6                      |   TYPE    | SNAPSHOTS |
++-----------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+| alpine111 | RUNNING | 10.229.250.124 (eth0) | fd42:b59f:f393:4958 (eth0) | CONTAINER | 1         |
++-----------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+| rocky222  | RUNNING | 10.229.250.133 (eth0) | fd42:b59f:f393:103 (eth0)  | CONTAINER | 0         |
++-----------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+| ubretg    | RUNNING | 10.229.250.179 (eth0) | fd42:b59f:f393:9bea (eth0) | CONTAINER | 0         |
++-----------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+
+
+# 查看快照的实际名称
+rambo@debian137:~$ sudo incus info alpine111
+# 输出末尾通常会有类似内容
+Snapshots:
++----------------+----------------------+------------+----------+
+|      NAME      |       TAKEN AT       | EXPIRES AT | STATEFUL |
++----------------+----------------------+------------+----------+
+| alpine111-snap | 2026/09/24 19:12 HKT |            | NO       |
++----------------+----------------------+------------+----------+
+
+
+
+
+
+# 恢复快照
+# 恢复前先停止容器更稳妥，恢复后再启动
+# 格式：incus snapshot restore  容器名  快照名
+rambo@debian137:~$ sudo incus stop alpine111
+rambo@debian137:~$ sudo incus snapshot restore alpine111  alpine111-snap
+# 如果快照名中有特殊字符，使用完整形式：
+incus snapshot restore alpine111/快照名
+
+rambo@debian137:~$ sudo incus start alpine111
+
+
+
+# 复制整个容器(复制的容器在web端不会显示)
+rambo@debian137:~$ sudo incus copy alpine111 alpine111-test
+rambo@debian137:~$ sudo incus list
++----------------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+|      NAME      |  STATE  |         IPV4          |                      IPV6                      |   TYPE    | SNAPSHOTS |
++----------------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+| alpine111      | RUNNING | 10.229.250.124 (eth0) | fd42:b59f:f393:4f6d:1266:6aff:fe9d:4958 (eth0) | CONTAINER | 1         |
++----------------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+| alpine111-test | STOPPED |                       |                                                | CONTAINER | 1         |
++----------------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+| rocky222       | RUNNING | 10.229.250.133 (eth0) | fd42:b59f:f393:4f6d:1266:6aff:fe77:103 (eth0)  | CONTAINER | 0         |
++----------------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+| ubretg         | RUNNING | 10.229.250.179 (eth0) | fd42:b59f:f393:4f6d:1266:6aff:fe33:9bea (eth0) | CONTAINER | 0         |
++----------------+---------+-----------------------+------------------------------------------------+-----------+-----------+
+
+
+# 删除快照
+# 删除 alpine111 的 alpine111-snap 快照
+# 格式：incus snapshot delete 容器名  快照名
+rambo@debian137:~$ sudo incus snapshot list alpine111
++----------------+----------------------+------------+----------+
+|      NAME      |       TAKEN AT       | EXPIRES AT | STATEFUL |
++----------------+----------------------+------------+----------+
+| alpine111-snap | 2026/09/24 18:58 HKT |            | NO       |
++----------------+----------------------+------------+----------+
+rambo@debian137:~$ sudo incus snapshot delete alpine111  alpine111-snap
+rambo@debian137:~$ sudo incus snapshot list alpine111
++------+----------+------------+----------+
+| NAME | TAKEN AT | EXPIRES AT | STATEFUL |
++------+----------+------------+----------+
+
+
+
+# 创建一个7天后自动过期的快照
+1、对alpine111执行
+rambo@debian137:~$ sudo incus config set alpine111 snapshots.expiry 7d
+2、创建快照
+rambo@debian137:~$ sudo incus snapshot create alpine111 alpine111-snap111
+3、查看快照
+rambo@debian137:~$ sudo incus snapshot list alpine111
++-------------------+----------------------+----------------------+----------+
+|       NAME        |       TAKEN AT       |      EXPIRES AT      | STATEFUL |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap    | 2026/09/24 19:12 HKT |                      | NO       |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap111 | 2026/09/24 19:16 HKT | 2026/10/01 19:16 HKT | NO       |
++-------------------+----------------------+----------------------+----------+
+
+# 或者
+rambo@debian137:~$ sudo incus info alpine111
+....
+	....
+Snapshots:
++-------------------+----------------------+----------------------+----------+
+|       NAME        |       TAKEN AT       |      EXPIRES AT      | STATEFUL |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap    | 2026/09/24 19:12 HKT |                      | NO       |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap111 | 2026/09/24 19:16 HKT | 2026/10/01 19:16 HKT | NO       |
++-------------------+----------------------+----------------------+----------+
+注：incus会把过期时间写入新创建的快照；snapshots.expiry只影响之后新建的快照，不会修改已经存在的快照。官方支持的时间单位包括 S、M、H、d、w、m、y，其中d表示天
+
+# 只让这次快照7天后删除
+如果不想让以后所有快照都默认7天过期，可以这样操作：
+rambo@debian137:~$ sudo incus config set alpine111 snapshots.expiry 7d
+rambo@debian137:~$ sudo incus snapshot create alpine111 alpine-snap222
+rambo@debian137:~$ sudo incus snapshot list alpine111
++-------------------+----------------------+----------------------+----------+
+|       NAME        |       TAKEN AT       |      EXPIRES AT      | STATEFUL |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap    | 2026/09/24 19:12 HKT |                      | NO       |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap111 | 2026/09/24 19:16 HKT | 2026/10/01 19:16 HKT | NO       |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap222 | 2026/09/24 19:21 HKT | 2026/10/01 19:21 HKT | NO       |
++-------------------+----------------------+----------------------+----------+
+
+rambo@debian137:~$ sudo incus config unset alpine111 snapshots.expiry
+注：该命令取消的是实例以后创建快照时的默认过期策略，不会修改已经创建好的快照
+已经创建的快照仍然会在2026年10月1日自动过期
+
+之后再创建快照测试：
+rambo@debian137:~$ sudo incus snapshot create alpine111 alpine111-snap333
+rambo@debian137:~$ sudo incus snapshot list alpine111
++-------------------+----------------------+----------------------+----------+
+|       NAME        |       TAKEN AT       |      EXPIRES AT      | STATEFUL |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap    | 2026/09/24 19:12 HKT |                      | NO       |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap111 | 2026/09/24 19:16 HKT | 2026/10/01 19:16 HKT | NO       |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap222 | 2026/09/24 19:21 HKT | 2026/10/01 19:21 HKT | NO       |
++-------------------+----------------------+----------------------+----------+
+| alpine111-snap333 | 2026/09/24 19:33 HKT |                      | NO       |
++-------------------+----------------------+----------------------+----------+
+
+# 更简单的方法是删除后重新创建
+如果快照内容不重要，也可以删除后重新创建：
+rambo@debian137:~$ 
+sudo incus snapshot delete alpine111 alpine111-snap111
+sudo incus snapshot delete alpine111 alpine111-snap222
+sudo incus snapshot delete alpine111 alpine111-snap333
+
+rambo@debian137:~$ sudo incus snapshot list alpine111
++----------------+----------------------+------------+----------+
+|      NAME      |       TAKEN AT       | EXPIRES AT | STATEFUL |
++----------------+----------------------+------------+----------+
+| alpine111-snap | 2026/09/24 19:12 HKT |            | NO       |
++----------------+----------------------+------------+----------+
+
+
+rambo@debian137:~$ sudo incus config show alpine111
+注：确认 snapshots.expiry 已经被删除
+注：这不会影响刚刚创建的 alpine111-snap，因为快照创建时已经记录了过期时间
+
+# 设置每天自动快照
+例如每天凌晨 2 点创建一次快照：
+rambo@debian137:~$ 
+sudo incus config set alpine111 snapshots.schedule "0 2 * * *"
+sudo incus config set alpine111 snapshots.expiry 7d
+也可以直接使用每天执行的别名：
+rambo@debian137:~$ sudo incus config set alpine111 snapshots.schedule @daily
+rambo@debian137:~$ sudo incus config set alpine111 snapshots.expiry 7d
+Incus 官方支持使用 cron 表达式或 @daily、@weekly 等别名设置自动快照
+
+如果想让停止状态的容器也参与自动快照：
+rambo@debian137:~$ sudo incus config set alpine111 snapshots.schedule.stopped true
+
+设置快照名称格式，例如使用时间戳：
+rambo@debian137:~$ sudo incus config set alpine111 snapshots.pattern "auto-{{ creation_date|date:'2006-01-02_15-04-05' }}"
+
+# 快照仍然保存在本机同一个存储池中，不能替代异地备份。重要容器还应定期导出
+rambo@debian137:~$ sudo mkdir -p /srv/incus-backup
+rambo@debian137:~$ sudo incus export alpine111  /srv/incus-backup/alpine111-$(date +%F).tar.gz
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
