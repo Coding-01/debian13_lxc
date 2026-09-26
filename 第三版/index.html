@@ -18,14 +18,51 @@ button:hover { background-color: #0056b3; }
 .btn-gen { background-color: #17a2b8; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 13px; height: 38px; width: 100%; white-space: nowrap; }
 .btn-add { background-color: #28a745; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 14px; height: 38px; width: 100%; font-weight: bold; white-space: nowrap; }
 .btn-logout { background-color: #dc3545; padding: 6px 12px; font-size: 14px; text-decoration: none; color: white; border-radius: 4px; }
-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+/* 使用 fixed 布局，确保各列独立，互不牵连 */
+table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin-top: 10px; 
+    table-layout: fixed; 
+}
 table, th, td { border: 1px solid #ddd; }
-th, td { padding: 10px; text-align: left; }
-th { background-color: #f8f9fa; }
+th, td { 
+    padding: 10px; 
+    text-align: left; 
+    vertical-align: middle; 
+    overflow: hidden; 
+    word-break: break-all;
+}
+th { 
+    background-color: #f8f9fa; 
+    position: relative; 
+    user-select: none;
+}
+
+/* 列宽调整手柄样式 */
+.resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+}
+.resizer:hover, .resizing {
+    background-color: #007bff;
+}
+
 .flash { padding: 10px; background-color: #d4edda; color: #155724; border-radius: 4px; margin-bottom: 15px; }
 .badge-admin { background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
 .badge-user { background: #007bff; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
-.pass-tag { background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 4px; font-family: monospace; font-weight: bold; }
+.pass-tag { background: #e0f2fe; color: #0369a1; padding: 3px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; display: inline-block; }
 details summary { cursor: pointer; outline: none; font-weight: bold; font-size: 16px; user-select: none; }
 details summary:hover { color: #0056b3; }
 .action-bar { margin-top: 15px; display: flex; gap: 10px; align-items: center; }
@@ -118,6 +155,46 @@ function validatePortForm() {
     }
     return true;
 }
+
+// 独立的列宽精准拖拽初始化脚本（互不影响，改哪列就哪列）
+document.addEventListener('DOMContentLoaded', function () {
+    const table = document.getElementById('containerTable');
+    if (!table) return;
+    const cols = table.querySelectorAll('th');
+    
+    cols.forEach((col) => {
+        // 创建拖拽手柄
+        const resizer = document.createElement('div');
+        resizer.classList.add('resizer');
+        col.appendChild(resizer);
+
+        let x = 0;
+        let w = 0;
+
+        const mouseDownHandler = function (e) {
+            x = e.clientX;
+            w = col.offsetWidth;
+            resizer.classList.add('resizing');
+            
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+            e.stopPropagation();
+        };
+
+        const mouseMoveHandler = function (e) {
+            const dx = e.clientX - x;
+            col.style.width = `${w + dx}px`;
+        };
+
+        const mouseUpHandler = function () {
+            resizer.classList.remove('resizing');
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+        };
+
+        resizer.addEventListener('mousedown', mouseDownHandler);
+    });
+});
 </script>
 </head>
 <body>
@@ -142,9 +219,8 @@ function validatePortForm() {
 <div><label>密码:</label><input type="text" id="new_password" name="new_password" required></div>
 <div><label>&nbsp;</label><button type="button" class="btn-gen" onclick="generatePassword()">生成密码</button></div>
 <div>
-    <!-- 明确指出：端口规则的顺序决定了初始默认分配的端口 -->
-    <label style="white-space: nowrap;">可用端口规则 <span style="color:#007bff; font-size:11px;">(💡 提示: 首个可用端口/排在最前的端口将作为初始默认映射端口，例: 10301-10602)</span>:</label>
-    <input type="text" name="port_range" value="10000-20000" placeholder="例: 10000-20000 或 80,443,10000-20000" required>
+    <label style="white-space: nowrap;">可用端口规则 <span style="color:#007bff; font-size:11px;">(💡 提示: 排在最前的端口将作为初始默认映射端口)</span>:</label>
+    <input type="text" name="port_range" value="10000-20000" placeholder="例: 10000-20000" required>
 </div>
 <div><label>&nbsp;</label><button type="submit" class="btn-add">添加账号</button></div>
 </form>
@@ -156,7 +232,7 @@ function validatePortForm() {
 <summary style="color: #17a2b8;">租户账号及端口规则管控列表 (点击展开/隐藏)</summary>
 <div style="margin-top: 15px;">
 <table>
-<thead><tr><th>ID</th><th>用户名</th><th>系统密码</th><th>角色</th><th>租户ID</th><th>允许端口规则 (支持逗号及范围，可直接修改)</th><th>操作</th></tr></thead>
+<thead><tr><th>ID</th><th>用户名</th><th>系统密码</th><th>角色</th><th>租户ID</th><th>允许端口规则 (可直接修改)</th><th>操作</th></tr></thead>
 <tbody>
 {% for u in all_users_info %}
 <tr>
@@ -167,8 +243,11 @@ function validatePortForm() {
 <td>{{ u.role }}</td>
 <td><b>{{ u.tenant_id }}</b></td>
 <td>
-    <input type="hidden" name="username" value="{{ u.username }}">
-    <input type="text" name="port_range" value="{{ u.port_range }}" style="width: 100%; box-sizing: border-box;" required>
+    <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+        <input type="hidden" name="username" value="{{ u.username }}">
+        <input type="text" name="port_range" value="{{ u.port_range }}" style="flex: 1; box-sizing: border-box; font-size: 13px; height: 36px; padding: 6px 10px;" required>
+        <button type="submit" style="padding: 6px 12px; font-size: 12px; background: #17a2b8; white-space: nowrap; height: 36px;">更新规则</button>
+    </div>
 </td>
 <td><button type="submit" style="padding: 4px 8px; font-size: 12px; background:#17a2b8; white-space:nowrap;">更新规则</button></td>
 </form>
@@ -209,11 +288,22 @@ function validatePortForm() {
 <div class="container">
 <h3 style="margin-top: 0;">已创建容器列表</h3>
 <form action="/containers/action" method="post">
-<table>
+<div class="table-responsive">
+<table id="containerTable">
 <thead>
 <tr>
-<th style="width: 40px; text-align: center;"><input type="checkbox" onclick="toggleSelectAll(this)"></th>
-<th>容器名称</th><th>状态</th><th>所有者</th><th>系统</th><th>租户ID</th><th>IP 地址</th><th>自定义端口映射</th><th>可用端口 (可直接修改)</th><th>Root 密码</th><th>连接命令</th><th>配置 (CPU/MEM/Disk)</th><th style="text-align: center;">高级操作</th>
+<th style="width: 50px; text-align: center;"><input type="checkbox" onclick="toggleSelectAll(this)"></th>
+<th style="width: 110px;">容器名称</th>
+<th style="width: 80px;">状态</th>
+<th style="width: 90px;">所有者</th>
+<th style="width: 120px;">系统</th>
+<th style="width: 70px;">租户ID</th>
+<th style="width: 130px;">IP 地址</th>
+<th style="width: 160px;">自定义端口映射</th>
+<th style="width: 250px;">可用端口 (独立拖拽边缘 ↔)</th>
+<th style="width: 210px;">连接命令</th>
+<th style="width: 140px;">配置 (CPU/MEM/Disk)</th>
+<th style="width: 90px; text-align: center;">高级操作</th>
 </tr>
 </thead>
 <tbody>
@@ -234,23 +324,23 @@ function validatePortForm() {
         </div><br>
         {% endfor %}
     {% else %}
-        <span style="color: #888; font-size: 12px;">暂无自定义端口</span><br>
+        <span style="color: #888; font-size: 12px;">暂无端口</span><br>
     {% endif %}
-    <button type="button" onclick="openAddPortModal('{{ c.tenant_name }}')" style="padding: 2px 6px; font-size: 11px; background-color: #17a2b8; margin-top: 2px;">➕ 添加端口</button>
+    <button type="button" onclick="openAddPortModal('{{ c.tenant_name }}')" style="padding: 2px 6px; font-size: 11px; background-color: #17a2b8; margin-top: 2px; white-space: nowrap;">➕ 添加</button>
 </td>
 <td>
-    {% if session['user'] == 'admin' %}
-    <form action="/admin/update_user_ports" method="post" style="display:inline-flex; gap:4px; align-items:center;">
+    <form action="/admin/update_user_ports" method="post" style="width: 100%; margin: 0;">
         <input type="hidden" name="username" value="{{ c.owner }}">
-        <input type="text" name="port_range" value="{{ c.port_range }}" style="width: 130px; box-sizing: border-box; font-size:12px; height:30px;" required>
-        <button type="submit" style="padding: 2px 6px; font-size: 11px; background:#17a2b8; white-space:nowrap; height:30px;">更新</button>
+        <input type="text" name="port_range" value="{{ c.port_range }}" {% if session['user'] != 'admin' %}readonly{% endif %} style="width: 100%; box-sizing: border-box; font-size: 13px; height: 36px; padding: 6px 10px; margin-bottom: 4px;" required>
+        {% if session['user'] == 'admin' %}
+        <button type="submit" style="padding: 4px 10px; font-size: 12px; background: #17a2b8; height: 28px; display: block;">更新</button>
+        {% endif %}
     </form>
-    {% else %}
-    <span style="font-size: 12px; font-family: monospace;">{{ c.port_range }}</span>
-    {% endif %}
 </td>
-<td><span class="pass-tag">{{ c.root_pass }}</span></td>
-<td><code>ssh {{ c.ssh_user }}@{{ c.host_ip }} -p {{ c.ssh_port }}</code></td>
+<td>
+    <code>ssh {{ c.ssh_user }}@{{ c.host_ip }} -p {{ c.ssh_port }}</code><br>
+    <div style="margin-top: 4px; font-size: 13px;">密码: <span class="pass-tag">{{ c.root_pass }}</span></div>
+</td>
 <td><small>{{ c.cpu_limit }} / {{ c.mem_limit }} / {{ c.disk_limit }}</small></td>
 <td style="text-align: center;">
   <div class="dropdown">
@@ -269,10 +359,11 @@ function validatePortForm() {
 </td>
 </tr>
 {% else %}
-<tr><td colspan="13" style="text-align: center; color: #888;">暂无容器记录</td></tr>
+<tr><td colspan="12" style="text-align: center; color: #888;">暂无容器记录</td></tr>
 {% endfor %}
 </tbody>
 </table>
+</div>
 {% if containers %}
 <div class="action-bar">
 <button type="submit" name="action" value="restart" class="btn-restart" onclick="return confirmContainerAction('重启')">🔄 智能重启</button>
