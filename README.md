@@ -524,25 +524,10 @@ rambo@debian137:~$ sudo mkdir -p /srv/incus-backup
 rambo@debian137:~$ sudo incus export alpine111  /srv/incus-backup/alpine111-$(date +%F).tar.gz
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 
+![](./第一版/images/server.png)
+
+![](./第一版/images/client.png)
+
+![](./第二版/images/6.jpg)
